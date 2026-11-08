@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "arcgis>=2.4.4",
+    "duckdb>=2.0.0",
+    "pystac>=1.16.0",
     "requests>=2.34.2",
+    "stac-geoparquet>=0.8.3",
     "types-pyyaml>=6.0.12.20261103",
 ]
 

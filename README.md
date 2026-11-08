@@ -31,6 +31,8 @@ uv run python extract.py https://enterprise.gisdata.mn.gov/aghost/rest/services/
 
 The script will attempt to extract the data for each layer of the service as GeoParquet and add it to the STAC.
 
+You can use DuckDB to query any of the parquet files directly. The script also creates `catalog-index/collections.parquet`, which is a geoparquet file of the bounding boxes of each parquet file. You can query the index to find datasets for a particular area of interest. The `query_index.py` file has an example of using a spatial predicate to query the items in the STAC.
+
 ## Example
 
 I am hosting a subset of data I extracted from the Minnesota Geospatial Commons using this script. You can see the example in the [moreGeo STAC browser](https://browser.moregeo.it/external/pub-fd7f8d9b83e64eefadd68ec6ea715112.r2.dev/mn_geocommons_stac/catalog.json)

@@ -5,6 +5,8 @@ from pathlib import Path
 from sys import argv
 from urllib.parse import urlsplit
 
+import duckdb
+import pystac
 import yaml
 
 CATALOG_DIR = Path("./mn_geocommons_stac")
@@ -101,6 +103,55 @@ def add_service(url: str, service_info: ServiceInfo) -> None:
     )
 
 
+def generate_index_parquet():
+    """Create a queryable GeoParquet index to find data in the STAC"""
+    root_catalog_path = CATALOG_DIR / "catalog.json"
+    catalog = pystac.Catalog.from_file(root_catalog_path)
+
+    conn = duckdb.connect()
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.execute(
+        "CREATE TABLE collections (id VARCHAR, title VARCHAR, href VARCHAR, bbox GEOMETRY)"
+    )
+
+    for collection in catalog.get_all_collections():
+        if collection.id == "catalog-index":
+            continue
+        xmin, ymin, xmax, ymax = collection.extent.spatial.bboxes[0]
+        parquet_assets = [
+            a for a in collection.assets.values() if a.href.endswith(".parquet")
+        ]
+        for asset in parquet_assets:
+            data_href = (
+                Path(asset.get_absolute_href())
+                .relative_to(CATALOG_DIR.resolve())
+                .as_posix()
+            )
+            insert_query = """
+                INSERT INTO collections 
+                VALUES ($id, $title, $href, ST_MakeEnvelope($xmin, $ymin, $xmax, $ymax))
+            """
+            insert_params = {
+                "id": collection.id,
+                "title": collection.title,
+                "href": data_href,
+                "xmin": xmin,
+                "ymin": ymin,
+                "xmax": xmax,
+                "ymax": ymax,
+            }
+            conn.execute(insert_query, parameters=insert_params)
+
+    index_dir = CATALOG_DIR / "catalog-index"
+    index_dir.mkdir(exist_ok=True)
+
+    output_query = "COPY collections to $outfile (FORMAT PARQUET)"
+    output_params = {"outfile": str(index_dir / "collections.parquet")}
+    conn.execute(output_query, parameters=output_params)
+
+    run_portolan(["add", "--force", index_dir.name], cwd=CATALOG_DIR)
+
+
 def main(urls):
     # Initialize root catalog
     if not (CATALOG_DIR / "catalog.json").exists():
@@ -136,6 +187,7 @@ def main(urls):
 
     run_portolan(["readme"], cwd=CATALOG_DIR)
     run_portolan(["check", "--fix"], cwd=CATALOG_DIR)
+    generate_index_parquet()
     run_portolan(["push"], cwd=CATALOG_DIR)
 
 
