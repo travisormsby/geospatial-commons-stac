@@ -1,13 +1,12 @@
 import json
 import subprocess
-from contextlib import chdir
+from dataclasses import dataclass
 from pathlib import Path
+from sys import argv
 from urllib.parse import urlsplit
 
-import requests
 import yaml
 
-SOURCE_URL = "https://enterprise.gisdata.mn.gov/aghost/rest/services"
 CATALOG_DIR = Path("./mn_geocommons_stac")
 CATALOG_ID = "mn-geospatial-data"
 CATALOG_TITLE = "Minnesota Geospatial Data"
@@ -31,15 +30,22 @@ CATALOG_PROCESSING_NOTES = (
 )
 
 
-def run_portolan(args: list[str], cwd: Path | None = None):
+@dataclass
+class ServiceInfo:
+    details: str
+    title: str
+    description: str
+
+
+def run_portolan(args: list[str], cwd: Path | None = None) -> None:
     """Run a portolan CLI command and stream output."""
     cmd = ["portolan", *args]
     print(f"Running: {' '.join(cmd)}")
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
-def update_metadata(metadata_file, **kwargs):
-
+def update_metadata(metadata_file: Path, **kwargs: str | dict[str, str]) -> None:
+    """Update the default metadata with key/value pairs from **kwargs"""
     metadata = yaml.safe_load(metadata_file.read_text())
     metadata.update(kwargs)
 
@@ -48,14 +54,12 @@ def update_metadata(metadata_file, **kwargs):
         yaml.safe_dump(metadata, f, sort_keys=False, allow_unicode=True)
 
 
-def add_service(url):
-    url_path = Path(urlsplit(url).path)
-    rel_extraction_path = Path(*url_path.parts[4:-1])
+def add_service(url: str, service_info: ServiceInfo) -> None:
+    """Given a service, add all its layers to the STAC as GeoParquet"""
+    url_path_parts = [part.lower() for part in Path(urlsplit(url).path).parts]
+    rel_extraction_path = Path(*url_path_parts[4:-1])
 
-    title = service_info[url]["title"]
-    description = service_info[url]["description"]
-    details_url = service_info[url]["details"]
-
+    # Extract the data from the service
     run_portolan(
         [
             "extract",
@@ -65,12 +69,18 @@ def add_service(url):
             "--license",
             "other",
             "--license-url",
-            details_url,
+            service_info.details,
             "--auto",
         ],
         cwd=CATALOG_DIR,
     )
 
+    # Nested directories cause problems with portolan versions.json
+    # Delete them so they are generated fresh from the subsequent add
+    for versions_file in (CATALOG_DIR / rel_extraction_path).rglob("versions.json"):
+        versions_file.unlink()
+
+    # Add the collection to the STAC
     run_portolan(
         [
             "add",
@@ -86,43 +96,49 @@ def add_service(url):
 
     update_metadata(
         CATALOG_DIR / rel_extraction_path / ".portolan/metadata.yaml",
-        title=title,
-        description=description,
+        title=service_info.title,
+        description=service_info.description,
     )
 
 
-if not (CATALOG_DIR / "catalog.json").exists():
-    run_portolan(
-        [
-            "init",
-            str(CATALOG_DIR),
-            "--id",
-            CATALOG_ID,
-            "--license",
-            "other",
-            "--license-url",
-            CATALOG_LICENSE_URL,
-            "--auto",
-        ]
-    )
+def main(urls):
+    # Initialize root catalog
+    if not (CATALOG_DIR / "catalog.json").exists():
+        run_portolan(
+            [
+                "init",
+                str(CATALOG_DIR),
+                "--id",
+                CATALOG_ID,
+                "--license",
+                "other",
+                "--license-url",
+                CATALOG_LICENSE_URL,
+                "--auto",
+            ]
+        )
 
-update_metadata(
-    CATALOG_DIR / ".portolan" / "metadata.yaml",
-    title=CATALOG_TITLE,
-    description=CATALOG_DESCRIPTION,
-    providers=CATALOG_PROVIDERS,
-    contact=CATALOG_CONTACT,
-    processing_notes=CATALOG_PROCESSING_NOTES,
-)
+        update_metadata(
+            CATALOG_DIR / ".portolan" / "metadata.yaml",
+            title=CATALOG_TITLE,
+            description=CATALOG_DESCRIPTION,
+            providers=CATALOG_PROVIDERS,
+            contact=CATALOG_CONTACT,
+            processing_notes=CATALOG_PROCESSING_NOTES,
+        )
+
+    with open("service_info.json") as f:
+        service_info_dict = json.load(f)
+
+    for url in urls:
+        service_info = ServiceInfo(**service_info_dict[url])
+        add_service(url, service_info)
+
+    run_portolan(["readme"], cwd=CATALOG_DIR)
+    run_portolan(["check", "--fix"], cwd=CATALOG_DIR)
+    run_portolan(["push"], cwd=CATALOG_DIR)
 
 
-with open("service_info.json") as f:
-    service_info = json.load(f)
-
-url = "https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_health/bdry_svi_index_2020/FeatureServer"
-
-add_service(url)
-
-
-run_portolan(["readme"], cwd=CATALOG_DIR)
-run_portolan(["check", "--fix"], cwd=CATALOG_DIR)
+if __name__ == "__main__":
+    urls = argv[1:]
+    main(urls)

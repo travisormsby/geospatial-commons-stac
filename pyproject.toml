@@ -1,0 +1,14 @@
+[project]
+name = "geospatial-commons-stac"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "arcgis>=2.4.4",
+    "requests>=2.34.2",
+    "types-pyyaml>=6.0.12.20261103",
+]
+
+[tool.mypy]
+ignore_missing_imports = true
