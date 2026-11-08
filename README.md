@@ -33,9 +33,7 @@ The script will attempt to extract the data for each layer of the service as Geo
 
 ## Example
 
-I am hosting a subset of data I extracted from the Minnesota Geospatial Commons using this script. You can see the example by using this path in the [moreGeo STAC browser](https://browser.moregeo.it/):
-
-https://pub-fd7f8d9b83e64eefadd68ec6ea715112.r2.dev/mn_geocommons_stac/catalog.json
+I am hosting a subset of data I extracted from the Minnesota Geospatial Commons using this script. You can see the example in the [moreGeo STAC browser](https://browser.moregeo.it/external/pub-fd7f8d9b83e64eefadd68ec6ea715112.r2.dev/mn_geocommons_stac/catalog.json)
 
 The data are hosted on a free-tier R2 bucket in CloudFlare, so please don't hammer it with requests or I'll have to take it down. But it should serve to explore what it looks like to have these GeoParquet files organized in a STAC.
 
